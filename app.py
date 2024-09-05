@@ -1,18 +1,13 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from flask_dance.contrib.google import make_google_blueprint, google
-from flask_dance.consumer.storage.sqla import OAuthConsumerMixin, SQLAlchemyStorage
-from flask_dance.consumer import oauth_authorized
-from sqlalchemy.orm.exc import NoResultFound
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or 'your-secret-key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///subscriptions.db'
-app.config['GOOGLE_OAUTH_CLIENT_ID'] = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
-app.config['GOOGLE_OAUTH_CLIENT_SECRET'] = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET')
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -21,6 +16,13 @@ login_manager.login_view = 'login'
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(100), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
 class Subscription(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -30,50 +32,9 @@ class Subscription(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     user = db.relationship('User', backref=db.backref('subscriptions', lazy=True))
 
-class OAuth(OAuthConsumerMixin, db.Model):
-    user_id = db.Column(db.Integer, db.ForeignKey(User.id))
-    user = db.relationship(User)
-
-google_bp = make_google_blueprint(scope=['profile', 'email'])
-app.register_blueprint(google_bp, url_prefix='/login')
-google_bp.storage = SQLAlchemyStorage(OAuth, db.session, user=current_user)
-
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
-
-@oauth_authorized.connect_via(google_bp)
-def google_logged_in(blueprint, token):
-    if not token:
-        flash("Failed to log in with Google.", category="error")
-        return False
-
-    resp = google.get("/oauth2/v2/userinfo")
-    if not resp.ok:
-        flash("Failed to fetch user info from Google.", category="error")
-        return False
-
-    google_info = resp.json()
-    google_user_id = google_info["id"]
-
-    query = OAuth.query.filter_by(provider=blueprint.name, provider_user_id=google_user_id)
-    try:
-        oauth = query.one()
-    except NoResultFound:
-        oauth = OAuth(provider=blueprint.name, provider_user_id=google_user_id, token=token)
-
-    if oauth.user:
-        login_user(oauth.user)
-        flash("Successfully signed in with Google.", category="success")
-    else:
-        user = User(email=google_info["email"])
-        oauth.user = user
-        db.session.add_all([user, oauth])
-        db.session.commit()
-        login_user(user)
-        flash("Successfully signed in with Google.", category="success")
-
-    return False
 
 @app.route('/')
 @login_required
@@ -97,9 +58,36 @@ def add_subscription():
         return redirect(url_for('index'))
     return render_template('add.html')
 
-@app.route('/login')
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    return redirect(url_for('google.login'))
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password']
+        user = User.query.filter_by(email=email).first()
+        if user and user.check_password(password):
+            login_user(user)
+            flash('Logged in successfully.', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('Invalid email or password.', 'error')
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password']
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            flash('Email already registered.', 'error')
+        else:
+            new_user = User(email=email)
+            new_user.set_password(password)
+            db.session.add(new_user)
+            db.session.commit()
+            flash('Registration successful. Please log in.', 'success')
+            return redirect(url_for('login'))
+    return render_template('register.html')
 
 @app.route('/logout')
 @login_required
