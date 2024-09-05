@@ -33,3 +33,10 @@ Thumbs.db
 
 # Aider
 .aider*
+
+# Flask-Migrate
+migrations/
+alembic.ini
+env.py
+README
+script.py.mako
