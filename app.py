@@ -5,15 +5,23 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import os
 from flask_migrate import Migrate
+from flask_mail import Mail, Message
+from itsdangerous import URLSafeTimedSerializer
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or 'your-secret-key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///subscriptions.db'
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'your-email@gmail.com'  # Replace with your email
+app.config['MAIL_PASSWORD'] = 'your-email-password'  # Replace with your email password
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+mail = Mail(app)
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -97,6 +105,55 @@ def logout():
     logout_user()
     flash('You have been logged out.', 'info')
     return redirect(url_for('index'))
+
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    if request.method == 'POST':
+        new_password = request.form['new_password']
+        current_user.set_password(new_password)
+        db.session.commit()
+        flash('Password updated successfully.', 'success')
+        return redirect(url_for('profile'))
+    return render_template('profile.html')
+
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form['email']
+        user = User.query.filter_by(email=email).first()
+        if user:
+            s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+            token = s.dumps(email, salt='password-reset-salt')
+            reset_url = url_for('reset_password', token=token, _external=True)
+            msg = Message('Password Reset Request',
+                          sender='noreply@example.com',
+                          recipients=[email])
+            msg.body = f'To reset your password, visit the following link: {reset_url}'
+            mail.send(msg)
+            flash('An email with instructions to reset your password has been sent.', 'info')
+        else:
+            flash('Email address not found.', 'error')
+        return redirect(url_for('login'))
+    return render_template('forgot_password.html')
+
+@app.route('/reset_password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    try:
+        email = s.loads(token, salt='password-reset-salt', max_age=3600)
+    except:
+        flash('The password reset link is invalid or has expired.', 'error')
+        return redirect(url_for('login'))
+    
+    user = User.query.filter_by(email=email).first()
+    if request.method == 'POST':
+        new_password = request.form['new_password']
+        user.set_password(new_password)
+        db.session.commit()
+        flash('Your password has been updated.', 'success')
+        return redirect(url_for('login'))
+    return render_template('reset_password.html')
 
 if __name__ == '__main__':
     with app.app_context():
