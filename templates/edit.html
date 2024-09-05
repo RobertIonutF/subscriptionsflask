@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white shadow-md rounded-lg p-6">
+    <h2 class="text-2xl font-semibold mb-4">Edit Subscription</h2>
+    <form method="POST" action="{{ url_for('edit_subscription', id=subscription.id) }}">
+        <div class="mb-4">
+            <label for="name" class="block text-gray-700 font-bold mb-2">Subscription Name</label>
+            <input type="text" id="name" name="name" value="{{ subscription.name }}" required class="w-full px-3 py-2 border rounded-lg">
+        </div>
+        <div class="mb-4">
+            <label for="price" class="block text-gray-700 font-bold mb-2">Price</label>
+            <input type="number" id="price" name="price" step="0.01" value="{{ subscription.price }}" required class="w-full px-3 py-2 border rounded-lg">
+        </div>
+        <div class="mb-4">
+            <label for="renewal_date" class="block text-gray-700 font-bold mb-2">Renewal Date</label>
+            <input type="date" id="renewal_date" name="renewal_date" value="{{ subscription.renewal_date.strftime('%Y-%m-%d') }}" required class="w-full px-3 py-2 border rounded-lg">
+        </div>
+        <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Update Subscription</button>
+    </form>
+</div>
+{% endblock %}

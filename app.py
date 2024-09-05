@@ -7,6 +7,7 @@ import os
 from flask_migrate import Migrate
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer
+from sqlalchemy import func
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or 'your-secret-key'
@@ -50,7 +51,8 @@ def load_user(user_id):
 @login_required
 def index():
     subscriptions = Subscription.query.filter_by(user_id=current_user.id).all()
-    return render_template('index.html', subscriptions=subscriptions)
+    total_monthly = db.session.query(func.sum(Subscription.price)).filter_by(user_id=current_user.id).scalar() or 0
+    return render_template('index.html', subscriptions=subscriptions, total_monthly=total_monthly)
 
 @app.route('/add', methods=['GET', 'POST'])
 @login_required
@@ -67,6 +69,37 @@ def add_subscription():
         flash('Subscription added successfully!', 'success')
         return redirect(url_for('index'))
     return render_template('add.html')
+
+@app.route('/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_subscription(id):
+    subscription = Subscription.query.get_or_404(id)
+    if subscription.user_id != current_user.id:
+        flash('You do not have permission to edit this subscription.', 'error')
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        subscription.name = request.form['name']
+        subscription.price = float(request.form['price'])
+        subscription.renewal_date = datetime.strptime(request.form['renewal_date'], '%Y-%m-%d').date()
+        db.session.commit()
+        flash('Subscription updated successfully!', 'success')
+        return redirect(url_for('index'))
+    
+    return render_template('edit.html', subscription=subscription)
+
+@app.route('/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_subscription(id):
+    subscription = Subscription.query.get_or_404(id)
+    if subscription.user_id != current_user.id:
+        flash('You do not have permission to delete this subscription.', 'error')
+        return redirect(url_for('index'))
+    
+    db.session.delete(subscription)
+    db.session.commit()
+    flash('Subscription deleted successfully!', 'success')
+    return redirect(url_for('index'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
