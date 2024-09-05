@@ -12,6 +12,7 @@
             <a href="{{ url_for('add_subscription') }}" class="text-white text-2xl font-bold hover:text-gray-200">Subscription Tracker</a>
             <div>
                 {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('index') }}" class="text-white hover:text-gray-200 mr-4">My Subscriptions</a>
                     <span class="text-white mr-4">{{ current_user.email }}</span>
                     <a href="{{ url_for('profile') }}" class="text-white hover:text-gray-200 mr-4">Profile</a>
                     <a href="{{ url_for('logout') }}" class="text-white hover:text-gray-200">Logout</a>
