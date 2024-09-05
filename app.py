@@ -101,6 +101,15 @@ def delete_subscription(id):
     flash('Subscription deleted successfully!', 'success')
     return redirect(url_for('index'))
 
+@app.route('/view/<int:id>')
+@login_required
+def view_subscription(id):
+    subscription = Subscription.query.get_or_404(id)
+    if subscription.user_id != current_user.id:
+        flash('You do not have permission to view this subscription.', 'error')
+        return redirect(url_for('index'))
+    return render_template('view.html', subscription=subscription)
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
